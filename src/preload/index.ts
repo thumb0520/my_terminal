@@ -84,6 +84,13 @@ const api = {
       ipcRenderer.on('local-shell:disconnected', handler)
       return () => ipcRenderer.removeListener('local-shell:disconnected', handler)
     }
+  },
+  menu: {
+    onNewLocalTerminal: (cb: () => void) => {
+      const handler = () => cb()
+      ipcRenderer.on('menu:new-local-terminal', handler)
+      return () => ipcRenderer.removeListener('menu:new-local-terminal', handler)
+    }
   }
 }
 

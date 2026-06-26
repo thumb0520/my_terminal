@@ -108,4 +108,5 @@ export interface TabInfo {
   connectionId: string
   title: string
   status: ConnectionStatus
+  type: 'local' | 'ssh'
 }

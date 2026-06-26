@@ -10,11 +10,23 @@ interface TerminalState {
   setActiveTab: (id: string | null) => void
   updateTab: (id: string, updates: Partial<TabInfo>) => void
   getTabByConnection: (connectionId: string) => TabInfo | undefined
+  addLocalTab: () => void
+}
+
+let localTerminalCounter = 1
+
+// 默认的本地终端标签
+const defaultLocalTab: TabInfo = {
+  id: 'local-1',
+  connectionId: 'local-1',
+  title: '本地终端 1',
+  status: 'connected',
+  type: 'local'
 }
 
 export const useTerminalStore = create<TerminalState>((set, get) => ({
-  tabs: [],
-  activeTabId: null,
+  tabs: [defaultLocalTab],
+  activeTabId: 'local-1',
 
   addTab: (tab) =>
     set((state) => ({
@@ -43,5 +55,20 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
 
   getTabByConnection: (connectionId) => {
     return get().tabs.find((t) => t.connectionId === connectionId)
+  },
+
+  addLocalTab: () => {
+    localTerminalCounter++
+    const tab: TabInfo = {
+      id: `local-${localTerminalCounter}`,
+      connectionId: `local-${localTerminalCounter}`,
+      title: `本地终端 ${localTerminalCounter}`,
+      status: 'connected',
+      type: 'local'
+    }
+    set((state) => ({
+      tabs: [...state.tabs, tab],
+      activeTabId: tab.id
+    }))
   }
 }))

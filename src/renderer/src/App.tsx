@@ -14,7 +14,7 @@ type RightPanel = 'terminal' | 'files' | 'keys' | 'settings'
 
 export default function App() {
   const { activeConnectionId, connectionStatuses } = useConnectionStore()
-  const { tabs } = useTerminalStore()
+  const { tabs, addLocalTab } = useTerminalStore()
   const { settings, loadSettings, sidebarWidth, setSidebarWidth } = useSettingsStore()
   const [rightPanel, setRightPanel] = useState<RightPanel>('terminal')
   const [isResizing, setIsResizing] = useState(false)
@@ -37,6 +37,17 @@ export default function App() {
       setRightPanel('terminal')
     }
   }, [activeConnectionId, connectionStatuses])
+
+  // 监听主进程菜单事件
+  useEffect(() => {
+    const unsubscribe = window.api.menu.onNewLocalTerminal(() => {
+      addLocalTab()
+      setRightPanel('terminal')
+    })
+    return () => {
+      unsubscribe()
+    }
+  }, [addLocalTab])
 
   const handleMouseDown = () => {
     setIsResizing(true)

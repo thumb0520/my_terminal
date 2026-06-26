@@ -41,6 +41,7 @@ export function TerminalPanel() {
   const termRef = useRef<Terminal | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
   const unsubsRef = useRef<(() => void)[]>([])
+  const currentShellIdRef = useRef<string>(LOCAL_TERMINAL_ID)
 
   // 清理函数
   const cleanup = useCallback(() => {
@@ -51,7 +52,7 @@ export function TerminalPanel() {
       termRef.current = null
     }
     fitRef.current = null
-    window.api.localShell.kill(LOCAL_TERMINAL_ID)
+    window.api.localShell.kill(currentShellIdRef.current)
   }, [])
 
   // 创建终端 - 返回一个 Promise，确保终端完全就绪后再返回
@@ -122,7 +123,14 @@ export function TerminalPanel() {
 
   // 初始化本地终端
   useEffect(() => {
-    if (tabs.length > 0 || !containerRef.current) return
+    // 如果有标签页且当前激活的是 SSH 标签，则不显示本地终端
+    const activeTab = tabs.find(t => t.id === activeTabId)
+    if (tabs.length > 0 && activeTab && activeTab.type === 'ssh') return
+    if (!containerRef.current) return
+
+    // 确定本地终端 ID
+    const localId = activeTab ? activeTab.connectionId : LOCAL_TERMINAL_ID
+    currentShellIdRef.current = localId
 
     let observer: ResizeObserver | null = null
 
@@ -131,7 +139,7 @@ export function TerminalPanel() {
 
       // 监听本地 shell 输出
       const unsubData = window.api.localShell.onData((id, data) => {
-        if (id === LOCAL_TERMINAL_ID) {
+        if (id === localId) {
           console.log('[Terminal] Received data from shell:', data.substring(0, 50))
           terminal.write(data)
         }
@@ -142,30 +150,30 @@ export function TerminalPanel() {
       // 发送输入到本地 shell
       terminal.onData((data) => {
         console.log('[Terminal] onData:', JSON.stringify(data))
-        window.api.localShell.write(LOCAL_TERMINAL_ID, data)
+        window.api.localShell.write(localId, data)
       })
 
       // 本地终端大小调整
       terminal.onResize(({ cols, rows }) => {
-        window.api.localShell.resize(LOCAL_TERMINAL_ID, cols, rows)
+        window.api.localShell.resize(localId, cols, rows)
       })
 
       // 创建本地 shell - 终端就绪后再创建
-      window.api.localShell.create(LOCAL_TERMINAL_ID, terminal.cols, terminal.rows)
+      window.api.localShell.create(localId, terminal.cols, terminal.rows)
     })
 
     return () => {
       observer?.disconnect()
       cleanup()
     }
-  }, [tabs.length, setupTerminal])
+  }, [tabs, activeTabId, setupTerminal])
 
   // SSH 终端
   useEffect(() => {
     if (tabs.length === 0 || !activeTabId || !containerRef.current) return
 
     const tab = tabs.find(t => t.id === activeTabId)
-    if (!tab) return
+    if (!tab || tab.type !== 'ssh') return
 
     let observer: ResizeObserver | null = null
 

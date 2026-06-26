@@ -49,7 +49,8 @@ export function useSSH() {
       id: tabId,
       connectionId: id,
       title: config.name,
-      status: 'connecting'
+      status: 'connecting',
+      type: 'ssh'
     })
 
     try {

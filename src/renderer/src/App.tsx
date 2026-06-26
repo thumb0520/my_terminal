@@ -38,6 +38,7 @@ export default function App() {
     }
   }, [activeConnectionId, connectionStatuses])
 
+
   // 监听主进程菜单事件
   useEffect(() => {
     const unsubscribe = window.api.menu.onNewLocalTerminal(() => {
@@ -86,6 +87,7 @@ export default function App() {
         </div>
         <div className="ml-auto flex items-center gap-2 no-drag">
           <button
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => setRightPanel('terminal')}
             className={`p-2 rounded-lg transition-colors ${
               rightPanel === 'terminal' ? 'bg-sidebar-active text-accent-blue' : 'text-sidebar-muted hover:text-sidebar-text hover:bg-sidebar-hover'
@@ -97,6 +99,7 @@ export default function App() {
             </svg>
           </button>
           <button
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => setRightPanel('files')}
             className={`p-2 rounded-lg transition-colors ${
               rightPanel === 'files' ? 'bg-sidebar-active text-accent-blue' : 'text-sidebar-muted hover:text-sidebar-text hover:bg-sidebar-hover'
@@ -110,6 +113,7 @@ export default function App() {
           </button>
           <div className="w-px h-6 bg-sidebar-hover mx-1" />
           <button
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => setRightPanel('keys')}
             className={`p-2 rounded-lg transition-colors ${
               rightPanel === 'keys' ? 'bg-sidebar-active text-accent-blue' : 'text-sidebar-muted hover:text-sidebar-text hover:bg-sidebar-hover'
@@ -121,6 +125,7 @@ export default function App() {
             </svg>
           </button>
           <button
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => setRightPanel('settings')}
             className={`p-2 rounded-lg transition-colors ${
               rightPanel === 'settings' ? 'bg-sidebar-active text-accent-blue' : 'text-sidebar-muted hover:text-sidebar-text hover:bg-sidebar-hover'
@@ -152,26 +157,35 @@ export default function App() {
         />
 
         {/* Right panel */}
-        <div className="flex-1 flex flex-col overflow-hidden">
-          {rightPanel === 'terminal' && (
-            <>
-              <TabBar />
-              <TerminalPanel />
-            </>
-          )}
+        <div className="flex-1 relative overflow-hidden">
+          {/* 终端面板 - 始终挂载，用绝对定位 */}
+          <div
+            className="absolute inset-0 flex flex-col overflow-hidden"
+            style={{
+              visibility: rightPanel === 'terminal' ? 'visible' : 'hidden',
+              pointerEvents: rightPanel === 'terminal' ? 'auto' : 'none',
+              zIndex: rightPanel === 'terminal' ? 1 : 0
+            }}
+          >
+            <TabBar />
+            <TerminalPanel />
+          </div>
 
+          {/* 其他面板覆盖在上面 */}
           {rightPanel === 'files' && activeConnectionId && (
-            <FileBrowser connectionId={activeConnectionId} />
+            <div className="absolute inset-0 z-10">
+              <FileBrowser connectionId={activeConnectionId} />
+            </div>
           )}
 
           {rightPanel === 'keys' && (
-            <div className="flex-1 overflow-y-auto p-6 bg-terminal-bg">
+            <div className="absolute inset-0 z-10 overflow-y-auto p-6 bg-terminal-bg">
               <SSHKeyManager />
             </div>
           )}
 
           {rightPanel === 'settings' && (
-            <div className="flex-1 overflow-y-auto p-6 bg-terminal-bg">
+            <div className="absolute inset-0 z-10 overflow-y-auto p-6 bg-terminal-bg">
               <ThemeSettings />
             </div>
           )}

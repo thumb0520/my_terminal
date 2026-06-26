@@ -6,6 +6,8 @@ import { SearchAddon } from 'xterm-addon-search'
 import { useTerminalStore } from '../../store/terminalStore'
 import { useConnectionStore } from '../../store/connectionStore'
 import { useSettingsStore } from '../../store/settingsStore'
+import { useCommandHistoryStore } from '../../store/commandHistoryStore'
+import { CommandAutocomplete } from './CommandAutocomplete'
 
 // 终端配色方案
 function getTerminalTheme(appTheme: string) {
@@ -37,11 +39,92 @@ const LOCAL_TERMINAL_ID = 'local-terminal'
 export function TerminalPanel() {
   const { tabs, activeTabId } = useTerminalStore()
   const { settings } = useSettingsStore()
+  const { loadHistory, addCommand, getCompletions } = useCommandHistoryStore()
   const containerRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
   const unsubsRef = useRef<(() => void)[]>([])
   const currentShellIdRef = useRef<string>(LOCAL_TERMINAL_ID)
+
+  // 命令缓冲区和自动补全状态 - 全部用 ref，避免触发重渲染
+  const commandBufferRef = useRef<string>('')
+  const autocompleteVisibleRef = useRef(false)
+  const autocompleteSuggestionsRef = useRef<string[]>([])
+  const autocompleteIndexRef = useRef(0)
+  const autocompletePositionRef = useRef({ x: 0, y: 0 })
+
+  // 用于触发 UI 更新的状态
+  const [, forceUpdate] = useState(0)
+
+  // 加载命令历史
+  useEffect(() => {
+    loadHistory()
+  }, [loadHistory])
+
+  // 计算自动补全位置
+  const getAutocompletePosition = useCallback(() => {
+    if (!termRef.current || !containerRef.current) return { x: 0, y: 0 }
+
+    const terminal = termRef.current
+    const container = containerRef.current
+    const rect = container.getBoundingClientRect()
+
+    const cursorX = terminal.buffer.active.cursorX
+    const cursorY = terminal.buffer.active.cursorY
+
+    const cellWidth = terminal.element?.querySelector('.xterm-rows')?.querySelector('div')?.offsetWidth || 8
+    const cellHeight = terminal.element?.querySelector('.xterm-rows')?.querySelector('div')?.offsetHeight || 16
+
+    const padding = 8
+
+    return {
+      x: rect.left + padding + cursorX * cellWidth,
+      y: rect.top + padding + (cursorY + 1) * cellHeight
+    }
+  }, [])
+
+  // 更新自动补全建议 - 不使用 setState
+  const updateAutocomplete = useCallback((buffer: string) => {
+    if (!buffer) {
+      autocompleteVisibleRef.current = false
+      forceUpdate(n => n + 1)
+      return
+    }
+
+    const suggestions = getCompletions(buffer)
+    if (suggestions.length > 0) {
+      autocompleteSuggestionsRef.current = suggestions
+      autocompleteIndexRef.current = 0
+      autocompletePositionRef.current = getAutocompletePosition()
+      autocompleteVisibleRef.current = true
+    } else {
+      autocompleteVisibleRef.current = false
+    }
+    forceUpdate(n => n + 1)
+  }, [getCompletions, getAutocompletePosition])
+
+  // 选择自动补全建议
+  const handleAutocompleteSelect = useCallback((command: string) => {
+    if (!termRef.current) return
+
+    const terminal = termRef.current
+    const currentBuffer = commandBufferRef.current
+
+    for (let i = 0; i < currentBuffer.length; i++) {
+      terminal.write('\x7f')
+    }
+
+    terminal.write(command)
+    commandBufferRef.current = command
+    autocompleteVisibleRef.current = false
+    forceUpdate(n => n + 1)
+  }, [])
+
+  // 关闭自动补全
+  const handleAutocompleteClose = useCallback(() => {
+    autocompleteVisibleRef.current = false
+    forceUpdate(n => n + 1)
+  }, [])
 
   // 清理函数
   const cleanup = useCallback(() => {
@@ -52,10 +135,12 @@ export function TerminalPanel() {
       termRef.current = null
     }
     fitRef.current = null
+    commandBufferRef.current = ''
+    autocompleteVisibleRef.current = false
     window.api.localShell.kill(currentShellIdRef.current)
   }, [])
 
-  // 创建终端 - 返回一个 Promise，确保终端完全就绪后再返回
+  // 创建终端
   const setupTerminal = useCallback((container: HTMLDivElement): Promise<{ terminal: Terminal; fitAddon: FitAddon; observer: ResizeObserver }> => {
     return new Promise((resolve) => {
       cleanup()
@@ -69,7 +154,6 @@ export function TerminalPanel() {
         theme: getTerminalTheme(settings.theme),
         allowTransparency: true,
         convertEol: true,
-        // 确保键盘事件正常工作
         screenReaderMode: false,
         macOptionIsMeta: true,
         allowProposedApi: true
@@ -86,12 +170,10 @@ export function TerminalPanel() {
       termRef.current = terminal
       fitRef.current = fitAddon
 
-      // 确保容器有尺寸后再打开终端
       const openTerminal = () => {
         if (container.offsetWidth > 0 && container.offsetHeight > 0) {
           terminal.open(container)
 
-          // 延迟调整大小和聚焦，然后 resolve
           setTimeout(() => {
             try {
               fitAddon.fit()
@@ -102,12 +184,10 @@ export function TerminalPanel() {
             resolve({ terminal, fitAddon, observer })
           }, 100)
         } else {
-          // 容器还没有尺寸，等待下一帧
           requestAnimationFrame(openTerminal)
         }
       }
 
-      // 监听容器大小变化
       const observer = new ResizeObserver(() => {
         try {
           fitAddon.fit()
@@ -121,14 +201,69 @@ export function TerminalPanel() {
     })
   }, [settings, cleanup])
 
+  // 处理终端输入 - 稳定的回调，不依赖任何会变化的 state
+  const handleTerminalDataRef = useRef<(data: string) => void>(() => {})
+
+  useEffect(() => {
+    handleTerminalDataRef.current = (data: string) => {
+      const char = data
+
+      if (char === '\r' || char === '\n') {
+        const cmd = commandBufferRef.current.trim()
+        if (cmd) {
+          addCommand(cmd)
+        }
+        commandBufferRef.current = ''
+        autocompleteVisibleRef.current = false
+        forceUpdate(n => n + 1)
+      } else if (char === '\x7f') {
+        commandBufferRef.current = commandBufferRef.current.slice(0, -1)
+        updateAutocomplete(commandBufferRef.current)
+      } else if (char === '\x1b[A' || char === '\x1b[B') {
+        if (autocompleteVisibleRef.current) {
+          if (char === '\x1b[A') {
+            autocompleteIndexRef.current = Math.max(0, autocompleteIndexRef.current - 1)
+          } else {
+            autocompleteIndexRef.current = Math.min(
+              autocompleteSuggestionsRef.current.length - 1,
+              autocompleteIndexRef.current + 1
+            )
+          }
+          forceUpdate(n => n + 1)
+          return
+        }
+      } else if (char === '\x1b[C' || char === '\x1b[D') {
+        autocompleteVisibleRef.current = false
+        forceUpdate(n => n + 1)
+      } else if (char === '\t') {
+        if (autocompleteVisibleRef.current && autocompleteSuggestionsRef.current.length > 0) {
+          handleAutocompleteSelect(autocompleteSuggestionsRef.current[autocompleteIndexRef.current])
+          return
+        }
+      } else if (char === '\x1b') {
+        if (autocompleteVisibleRef.current) {
+          autocompleteVisibleRef.current = false
+          forceUpdate(n => n + 1)
+          return
+        }
+      } else if (char >= ' ' && char <= '~') {
+        commandBufferRef.current += char
+        updateAutocomplete(commandBufferRef.current)
+      }
+    }
+  }, [addCommand, updateAutocomplete, handleAutocompleteSelect])
+
+  // 稳定的 onData 回调，引用 ref 而非直接依赖 state
+  const handleTerminalData = useCallback((data: string) => {
+    handleTerminalDataRef.current(data)
+  }, [])
+
   // 初始化本地终端
   useEffect(() => {
-    // 如果有标签页且当前激活的是 SSH 标签，则不显示本地终端
     const activeTab = tabs.find(t => t.id === activeTabId)
     if (tabs.length > 0 && activeTab && activeTab.type === 'ssh') return
     if (!containerRef.current) return
 
-    // 确定本地终端 ID
     const localId = activeTab ? activeTab.connectionId : LOCAL_TERMINAL_ID
     currentShellIdRef.current = localId
 
@@ -137,7 +272,6 @@ export function TerminalPanel() {
     setupTerminal(containerRef.current).then(({ terminal, fitAddon, observer: obs }) => {
       observer = obs
 
-      // 监听本地 shell 输出
       const unsubData = window.api.localShell.onData((id, data) => {
         if (id === localId) {
           console.log('[Terminal] Received data from shell:', data.substring(0, 50))
@@ -147,18 +281,16 @@ export function TerminalPanel() {
 
       unsubsRef.current.push(unsubData)
 
-      // 发送输入到本地 shell
       terminal.onData((data) => {
         console.log('[Terminal] onData:', JSON.stringify(data))
+        handleTerminalData(data)
         window.api.localShell.write(localId, data)
       })
 
-      // 本地终端大小调整
       terminal.onResize(({ cols, rows }) => {
         window.api.localShell.resize(localId, cols, rows)
       })
 
-      // 创建本地 shell - 终端就绪后再创建
       window.api.localShell.create(localId, terminal.cols, terminal.rows)
     })
 
@@ -166,7 +298,7 @@ export function TerminalPanel() {
       observer?.disconnect()
       cleanup()
     }
-  }, [tabs, activeTabId, setupTerminal])
+  }, [tabs, activeTabId, setupTerminal, handleTerminalData])
 
   // SSH 终端
   useEffect(() => {
@@ -180,7 +312,6 @@ export function TerminalPanel() {
     setupTerminal(containerRef.current).then(({ terminal, fitAddon, observer: obs }) => {
       observer = obs
 
-      // 监听 SSH 输出
       const unsubData = window.api.ssh.onData((id, data) => {
         if (id === tab.connectionId) {
           terminal.write(data)
@@ -189,12 +320,11 @@ export function TerminalPanel() {
 
       unsubsRef.current.push(unsubData)
 
-      // 发送输入到 SSH
       terminal.onData((data) => {
+        handleTerminalData(data)
         window.api.ssh.write(tab.connectionId, data)
       })
 
-      // SSH 终端大小调整
       terminal.onResize(({ cols, rows }) => {
         window.api.ssh.resize(tab.connectionId, cols, rows)
       })
@@ -204,7 +334,7 @@ export function TerminalPanel() {
       observer?.disconnect()
       cleanup()
     }
-  }, [activeTabId, tabs, setupTerminal])
+  }, [activeTabId, tabs, setupTerminal, handleTerminalData])
 
   // 主题变化时更新终端
   useEffect(() => {
@@ -217,7 +347,6 @@ export function TerminalPanel() {
   const handleContainerClick = useCallback(() => {
     if (termRef.current) {
       termRef.current.focus()
-      // 确保 textarea 也获得焦点
       const textarea = containerRef.current?.querySelector('.xterm-helper-textarea') as HTMLTextAreaElement
       if (textarea) {
         textarea.focus()
@@ -240,15 +369,14 @@ export function TerminalPanel() {
     return () => clearTimeout(timer)
   }, [tabs.length, activeTabId])
 
-  // 全局键盘事件处理 - 确保终端能接收输入
+  // 全局键盘事件处理
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // 如果终端存在且当前焦点不在输入框上
       if (termRef.current) {
         const activeElement = document.activeElement
-        const isInputFocused = activeElement?.tagName === 'INPUT' || activeElement?.tagName === 'TEXTAREA'
+        const tagName = activeElement?.tagName
+        const isInputFocused = tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'BUTTON'
 
-        // 如果没有输入框获得焦点，将焦点转移到终端
         if (!isInputFocused || activeElement?.classList.contains('xterm-helper-textarea')) {
           termRef.current.focus()
         }
@@ -260,8 +388,16 @@ export function TerminalPanel() {
   }, [])
 
   return (
-    <div className="flex-1 bg-terminal-bg" onClick={handleContainerClick}>
+    <div className="flex-1 bg-terminal-bg relative" onClick={handleContainerClick}>
       <div ref={containerRef} className="w-full h-full" />
+      <CommandAutocomplete
+        suggestions={autocompleteSuggestionsRef.current}
+        selectedIndex={autocompleteIndexRef.current}
+        position={autocompletePositionRef.current}
+        visible={autocompleteVisibleRef.current}
+        onSelect={handleAutocompleteSelect}
+        onClose={handleAutocompleteClose}
+      />
     </div>
   )
 }

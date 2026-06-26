@@ -5,6 +5,7 @@ interface StoreData {
   groups: any[]
   settings: any
   keys: any[]
+  commandHistory: string[]
 }
 
 export class StoreManager {
@@ -29,7 +30,8 @@ export class StoreManager {
           cursorStyle: 'block',
           cursorBlink: true
         },
-        keys: []
+        keys: [],
+        commandHistory: []
       }
     })
   }

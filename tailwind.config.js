@@ -1,28 +1,48 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   content: ['./src/renderer/**/*.{js,ts,jsx,tsx}'],
-  darkMode: 'class',
+  darkMode: ['selector', '[data-theme="dark"]'],
   theme: {
     extend: {
       colors: {
         sidebar: {
-          bg: '#1e1e2e',
-          hover: '#313244',
-          active: '#45475a',
-          text: '#cdd6f4',
-          muted: '#6c7086'
+          bg: 'var(--color-surface)',
+          hover: 'var(--color-surface-hover)',
+          active: 'var(--color-surface-active)',
+          text: 'var(--color-text)',
+          muted: 'var(--color-text-muted)'
         },
         terminal: {
-          bg: '#11111b',
-          border: '#313244'
+          bg: 'var(--color-bg)',
+          border: 'var(--color-border)'
         },
         accent: {
-          blue: '#89b4fa',
-          green: '#a6e3a1',
-          red: '#f38ba8',
-          yellow: '#f9e2af',
-          purple: '#cba6f7'
+          DEFAULT: 'var(--color-accent)',
+          blue: 'var(--color-accent)',
+          green: 'var(--color-green)',
+          red: 'var(--color-red)',
+          yellow: 'var(--color-yellow)',
+          purple: 'var(--color-purple)',
+          cyan: 'var(--color-cyan)'
         }
+      },
+      backgroundColor: {
+        theme: {
+          bg: 'var(--color-bg)',
+          surface: 'var(--color-surface)',
+          hover: 'var(--color-surface-hover)',
+          active: 'var(--color-surface-active)'
+        }
+      },
+      textColor: {
+        theme: {
+          DEFAULT: 'var(--color-text)',
+          muted: 'var(--color-text-muted)',
+          accent: 'var(--color-accent-text)'
+        }
+      },
+      borderColor: {
+        theme: 'var(--color-border)'
       }
     }
   },

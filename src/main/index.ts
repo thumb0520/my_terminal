@@ -4,6 +4,7 @@ import { SSHManager } from './ssh-manager'
 import { SFTPHandler } from './sftp-handler'
 import { StoreManager } from './store'
 import { KeyManager } from './key-manager'
+import { LocalShellManager } from './local-shell'
 import { IPC_CHANNELS } from '../shared/constants'
 
 let mainWindow: BrowserWindow | null = null
@@ -11,6 +12,7 @@ let sshManager: SSHManager | null = null
 let sftpHandler: SFTPHandler | null = null
 let storeManager: StoreManager | null = null
 let keyManager: KeyManager | null = null
+let localShellManager: LocalShellManager | null = null
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -25,7 +27,11 @@ function createWindow(): void {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      // 确保键盘事件正常工作
+      enableBlinkFeatures: 'KeyboardEventKey,KeyCode',
+      // 禁用 macOS 的自动键盘处理
+      automaticDashboards: false
     }
   })
 
@@ -45,6 +51,7 @@ function setupIPC(): void {
   sftpHandler = new SFTPHandler()
   storeManager = new StoreManager()
   keyManager = new KeyManager()
+  localShellManager = new LocalShellManager()
 
   // SSH connections
   ipcMain.handle(IPC_CHANNELS.SSH_CONNECT, async (_, config) => {
@@ -143,6 +150,49 @@ function setupIPC(): void {
   })
   ipcMain.on(IPC_CHANNELS.WINDOW_CLOSE, () => mainWindow?.close())
 
+  // Theme change - update window background
+  ipcMain.on('theme:change', (_, theme: string) => {
+    if (mainWindow) {
+      const color = theme === 'light' ? '#eff1f5' : '#11111b'
+      mainWindow.setBackgroundColor(color)
+    }
+  })
+
+  // Local shell operations
+  ipcMain.on('local-shell:create', (_, id: string, cols?: number, rows?: number) => {
+    localShellManager!.create(id, { cols, rows })
+  })
+
+  ipcMain.on('local-shell:write', (_, id: string, data: string) => {
+    localShellManager!.write(id, data)
+  })
+
+  ipcMain.on('local-shell:resize', (_, id: string, cols: number, rows: number) => {
+    localShellManager!.resize(id, cols, rows)
+  })
+
+  ipcMain.on('local-shell:kill', (_, id: string) => {
+    localShellManager!.kill(id)
+  })
+
+  // Forward local shell events to renderer
+  localShellManager.on('data', (id: string, data: string) => {
+    console.log('[Main] Forwarding data to renderer:', data.substring(0, 50))
+    mainWindow?.webContents.send('local-shell:data', id, data)
+  })
+
+  localShellManager.on('connected', (id: string) => {
+    mainWindow?.webContents.send('local-shell:connected', id)
+  })
+
+  localShellManager.on('disconnected', (id: string) => {
+    mainWindow?.webContents.send('local-shell:disconnected', id)
+  })
+
+  localShellManager.on('error', (id: string, error: string) => {
+    mainWindow?.webContents.send('local-shell:error', id, error)
+  })
+
   // Forward SSH events to renderer
   sshManager.on('data', (id: string, data: string) => {
     mainWindow?.webContents.send(IPC_CHANNELS.SSH_DATA, id, data)
@@ -176,5 +226,6 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   sshManager?.disconnectAll()
+  localShellManager?.killAll()
   if (process.platform !== 'darwin') app.quit()
 })

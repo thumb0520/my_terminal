@@ -61,7 +61,29 @@ const api = {
   window: {
     minimize: () => ipcRenderer.send(IPC_CHANNELS.WINDOW_MINIMIZE),
     maximize: () => ipcRenderer.send(IPC_CHANNELS.WINDOW_MAXIMIZE),
-    close: () => ipcRenderer.send(IPC_CHANNELS.WINDOW_CLOSE)
+    close: () => ipcRenderer.send(IPC_CHANNELS.WINDOW_CLOSE),
+    setTheme: (theme: string) => ipcRenderer.send('theme:change', theme)
+  },
+  localShell: {
+    create: (id: string, cols?: number, rows?: number) => ipcRenderer.send('local-shell:create', id, cols, rows),
+    write: (id: string, data: string) => ipcRenderer.send('local-shell:write', id, data),
+    resize: (id: string, cols: number, rows: number) => ipcRenderer.send('local-shell:resize', id, cols, rows),
+    kill: (id: string) => ipcRenderer.send('local-shell:kill', id),
+    onData: (cb: (id: string, data: string) => void) => {
+      const handler = (_: any, id: string, data: string) => cb(id, data)
+      ipcRenderer.on('local-shell:data', handler)
+      return () => ipcRenderer.removeListener('local-shell:data', handler)
+    },
+    onConnected: (cb: (id: string) => void) => {
+      const handler = (_: any, id: string) => cb(id)
+      ipcRenderer.on('local-shell:connected', handler)
+      return () => ipcRenderer.removeListener('local-shell:connected', handler)
+    },
+    onDisconnected: (cb: (id: string) => void) => {
+      const handler = (_: any, id: string) => cb(id)
+      ipcRenderer.on('local-shell:disconnected', handler)
+      return () => ipcRenderer.removeListener('local-shell:disconnected', handler)
+    }
   }
 }
 

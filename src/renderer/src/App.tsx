@@ -15,13 +15,22 @@ type RightPanel = 'terminal' | 'files' | 'keys' | 'settings'
 export default function App() {
   const { activeConnectionId, connectionStatuses } = useConnectionStore()
   const { tabs } = useTerminalStore()
-  const { loadSettings, sidebarWidth, setSidebarWidth } = useSettingsStore()
+  const { settings, loadSettings, sidebarWidth, setSidebarWidth } = useSettingsStore()
   const [rightPanel, setRightPanel] = useState<RightPanel>('terminal')
   const [isResizing, setIsResizing] = useState(false)
 
   useEffect(() => {
     loadSettings()
   }, [])
+
+  // 应用主题到 document
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', settings.theme)
+    // 同时更新 Electron 窗口背景色
+    document.body.style.backgroundColor = settings.theme === 'light' ? '#eff1f5' : '#11111b'
+    // 通知主进程更新窗口背景
+    window.api.window.setTheme(settings.theme)
+  }, [settings.theme])
 
   useEffect(() => {
     if (activeConnectionId && connectionStatuses[activeConnectionId] === 'connected') {

@@ -5,6 +5,7 @@ import { SFTPHandler } from './sftp-handler'
 import { StoreManager } from './store'
 import { KeyManager } from './key-manager'
 import { LocalShellManager } from './local-shell'
+import { PortForwardManager } from './port-forward-manager'
 import { IPC_CHANNELS } from '../shared/constants'
 
 let mainWindow: BrowserWindow | null = null
@@ -13,6 +14,7 @@ let sftpHandler: SFTPHandler | null = null
 let storeManager: StoreManager | null = null
 let keyManager: KeyManager | null = null
 let localShellManager: LocalShellManager | null = null
+let portForwardManager: PortForwardManager | null = null
 
 function createMenu(): void {
   const isMac = process.platform === 'darwin'
@@ -138,6 +140,7 @@ function setupIPC(): void {
   storeManager = new StoreManager()
   keyManager = new KeyManager()
   localShellManager = new LocalShellManager()
+  portForwardManager = new PortForwardManager()
 
   // SSH connections
   ipcMain.handle(IPC_CHANNELS.SSH_CONNECT, async (_, config) => {
@@ -228,6 +231,23 @@ function setupIPC(): void {
     return dialog.showSaveDialog(mainWindow!, options)
   })
 
+  // Port forwarding
+  ipcMain.handle(IPC_CHANNELS.PORT_FORWARD_START, async (_, rule) => {
+    return portForwardManager!.start(rule)
+  })
+
+  ipcMain.on(IPC_CHANNELS.PORT_FORWARD_STOP, (_, id) => {
+    portForwardManager!.stop(id)
+  })
+
+  ipcMain.on(IPC_CHANNELS.PORT_FORWARD_STOP_ALL, () => {
+    portForwardManager!.stopAll()
+  })
+
+  ipcMain.handle(IPC_CHANNELS.PORT_FORWARD_LIST, async () => {
+    return portForwardManager!.list()
+  })
+
   // Window controls
   ipcMain.on(IPC_CHANNELS.WINDOW_MINIMIZE, () => mainWindow?.minimize())
   ipcMain.on(IPC_CHANNELS.WINDOW_MAXIMIZE, () => {
@@ -285,10 +305,18 @@ function setupIPC(): void {
   })
 
   sshManager.on('connected', (id: string) => {
+    // Wire SFTP and port forward handlers to the SSH client
+    const client = sshManager?.getClient(id)
+    if (client) {
+      sftpHandler?.setConnection(id, client)
+      portForwardManager?.setClient(id, client)
+    }
     mainWindow?.webContents.send(IPC_CHANNELS.SSH_CONNECTED, id)
   })
 
   sshManager.on('disconnected', (id: string) => {
+    sftpHandler?.removeConnection(id)
+    portForwardManager?.removeClient(id)
     mainWindow?.webContents.send(IPC_CHANNELS.SSH_DISCONNECTED, id)
   })
 
@@ -298,6 +326,18 @@ function setupIPC(): void {
 
   sftpHandler.on('progress', (id: string, progress: any) => {
     mainWindow?.webContents.send(IPC_CHANNELS.SFTP_PROGRESS, id, progress)
+  })
+
+  portForwardManager.on('started', (id: string) => {
+    mainWindow?.webContents.send('portForward:started', id)
+  })
+
+  portForwardManager.on('stopped', (id: string) => {
+    mainWindow?.webContents.send('portForward:stopped', id)
+  })
+
+  portForwardManager.on('error', (id: string, error: string) => {
+    mainWindow?.webContents.send('portForward:error', id, error)
   })
 }
 
@@ -311,8 +351,9 @@ app.whenReady().then(() => {
   })
 })
 
-app.on('window-all-closed', () => {
-  sshManager?.disconnectAll()
+app.on('window-all-closed', async () => {
+  portForwardManager?.stopAll()
+  await sshManager?.disconnectAll()
   localShellManager?.killAll()
   if (process.platform !== 'darwin') app.quit()
 })

@@ -32,6 +32,11 @@ export const IPC_CHANNELS = {
 
   DIALOG_OPEN_FILE: 'dialog:openFile',
   DIALOG_SAVE_FILE: 'dialog:saveFile',
+
+  PORT_FORWARD_START: 'portForward:start',
+  PORT_FORWARD_STOP: 'portForward:stop',
+  PORT_FORWARD_STOP_ALL: 'portForward:stopAll',
+  PORT_FORWARD_LIST: 'portForward:list',
 } as const
 
 export const DEFAULT_SSH_PORT = 22

@@ -16,6 +16,8 @@ interface ConnectionState {
   setGroups: (groups: ConnectionGroup[]) => void
   addGroup: (group: ConnectionGroup) => void
   removeGroup: (id: string) => void
+  loadConnections: () => Promise<void>
+  loadGroups: () => Promise<void>
 }
 
 export const useConnectionStore = create<ConnectionState>((set) => ({
@@ -61,5 +63,27 @@ export const useConnectionStore = create<ConnectionState>((set) => ({
   removeGroup: (id) =>
     set((state) => ({
       groups: state.groups.filter((g) => g.id !== id)
-    }))
+    })),
+
+  loadConnections: async () => {
+    try {
+      const saved = await window.api.store.get('connections')
+      if (saved && Array.isArray(saved)) {
+        set({ connections: saved })
+      }
+    } catch (err) {
+      console.error('Failed to load connections:', err)
+    }
+  },
+
+  loadGroups: async () => {
+    try {
+      const saved = await window.api.store.get('groups')
+      if (saved && Array.isArray(saved)) {
+        set({ groups: saved })
+      }
+    } catch (err) {
+      console.error('Failed to load groups:', err)
+    }
+  }
 }))

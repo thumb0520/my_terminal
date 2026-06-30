@@ -41,7 +41,6 @@ export function useSSH() {
     const id = config.id || crypto.randomUUID()
     const connection = { ...config, id }
 
-    addConnection(connection)
     setConnectionStatus(id, 'connecting')
 
     const tabId = crypto.randomUUID()
@@ -65,13 +64,14 @@ export function useSSH() {
         passphrase: config.passphrase
       })
 
+      addConnection(connection)
       setConnectionStatus(id, 'connected')
       return id
     } catch (err: any) {
       setConnectionStatus(id, 'error')
       throw err
     }
-  }, [])
+  }, [addConnection, addTab, setConnectionStatus])
 
   const disconnect = useCallback(async (id: string) => {
     try {
@@ -100,13 +100,17 @@ export function useSSH() {
     } else {
       addConnection(connection)
     }
-    await window.api.store.set('connections', connections)
-  }, [connections])
+    // Use getState() to get the latest connections array after the update
+    const latest = useConnectionStore.getState().connections
+    await window.api.store.set('connections', latest)
+  }, [connections, addConnection, updateConnection])
 
   const deleteConnection = useCallback(async (id: string) => {
     removeConnection(id)
-    await window.api.store.set('connections', connections.filter(c => c.id !== id))
-  }, [connections])
+    // Use getState() to get the latest connections array after removal
+    const latest = useConnectionStore.getState().connections
+    await window.api.store.set('connections', latest)
+  }, [removeConnection])
 
   return {
     connections,

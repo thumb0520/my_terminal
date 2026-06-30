@@ -6,6 +6,7 @@ import { StatusBar } from './components/Terminal/StatusBar'
 import { FileBrowser } from './components/FileManager/FileBrowser'
 import { SSHKeyManager } from './components/Settings/SSHKeyManager'
 import { ThemeSettings } from './components/Settings/ThemeSettings'
+import { PortForwarding } from './components/Settings/PortForwarding'
 import { useConnectionStore } from './store/connectionStore'
 import { useTerminalStore } from './store/terminalStore'
 import { useSettingsStore } from './store/settingsStore'
@@ -13,7 +14,7 @@ import { useSettingsStore } from './store/settingsStore'
 type RightPanel = 'terminal' | 'files' | 'keys' | 'settings'
 
 export default function App() {
-  const { activeConnectionId, connectionStatuses } = useConnectionStore()
+  const { activeConnectionId, connectionStatuses, loadConnections, loadGroups } = useConnectionStore()
   const { tabs, addLocalTab } = useTerminalStore()
   const { settings, loadSettings, sidebarWidth, setSidebarWidth } = useSettingsStore()
   const [rightPanel, setRightPanel] = useState<RightPanel>('terminal')
@@ -21,6 +22,8 @@ export default function App() {
 
   useEffect(() => {
     loadSettings()
+    loadConnections()
+    loadGroups()
   }, [])
 
   // 应用主题到 document
@@ -187,6 +190,9 @@ export default function App() {
           {rightPanel === 'settings' && (
             <div className="absolute inset-0 z-10 overflow-y-auto p-6 bg-terminal-bg">
               <ThemeSettings />
+              <div className="mt-8 pt-6 border-t border-terminal-border">
+                <PortForwarding />
+              </div>
             </div>
           )}
         </div>

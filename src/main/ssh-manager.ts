@@ -137,10 +137,9 @@ export class SSHManager extends EventEmitter {
     }
   }
 
-  disconnectAll(): void {
-    for (const [id] of this.sessions) {
-      this.disconnect(id)
-    }
+  async disconnectAll(): Promise<void> {
+    const disconnectPromises = Array.from(this.sessions.keys()).map(id => this.disconnect(id))
+    await Promise.all(disconnectPromises)
   }
 
   isConnected(connectionId: string): boolean {

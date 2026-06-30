@@ -1,39 +1,95 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { PortForward } from '../../types'
+import { useConnectionStore } from '../../store/connectionStore'
 
 export function PortForwarding() {
   const [forwards, setForwards] = useState<PortForward[]>([])
   const [showAdd, setShowAdd] = useState(false)
+  const { connections, activeConnectionId, connectionStatuses } = useConnectionStore()
   const [form, setForm] = useState({
     name: '',
     type: 'local' as 'local' | 'remote' | 'dynamic',
     localHost: '127.0.0.1',
     localPort: 8080,
     remoteHost: '127.0.0.1',
-    remotePort: 80
+    remotePort: 80,
+    connectionId: ''
   })
 
-  const handleAdd = () => {
+  // Load saved forwards from store
+  useEffect(() => {
+    const loadForwards = async () => {
+      try {
+        const saved = await window.api.store.get('portForwards')
+        if (saved && Array.isArray(saved)) {
+          setForwards(saved)
+        }
+      } catch (err) {
+        console.error('Failed to load port forwards:', err)
+      }
+    }
+    loadForwards()
+  }, [])
+
+  // Set default connectionId when active connection changes
+  useEffect(() => {
+    if (activeConnectionId && connectionStatuses[activeConnectionId] === 'connected') {
+      setForm(prev => ({ ...prev, connectionId: activeConnectionId }))
+    }
+  }, [activeConnectionId, connectionStatuses])
+
+  const saveForwards = useCallback(async (updated: PortForward[]) => {
+    setForwards(updated)
+    try {
+      await window.api.store.set('portForwards', updated)
+    } catch (err) {
+      console.error('Failed to save port forwards:', err)
+    }
+  }, [])
+
+  const handleAdd = async () => {
+    if (!form.connectionId) {
+      alert('请先选择一个已连接的 SSH 会话')
+      return
+    }
+
     const forward: PortForward = {
       id: crypto.randomUUID(),
-      ...form,
-      connectionId: ''
+      ...form
     }
-    setForwards([...forwards, forward])
-    setShowAdd(false)
-    setForm({
-      name: '',
-      type: 'local',
-      localHost: '127.0.0.1',
-      localPort: 8080,
-      remoteHost: '127.0.0.1',
-      remotePort: 80
-    })
+
+    try {
+      await window.api.portForward.start(forward)
+      const updated = [...forwards, forward]
+      await saveForwards(updated)
+      setShowAdd(false)
+      setForm({
+        name: '',
+        type: 'local',
+        localHost: '127.0.0.1',
+        localPort: 8080,
+        remoteHost: '127.0.0.1',
+        remotePort: 80,
+        connectionId: activeConnectionId || ''
+      })
+    } catch (err: any) {
+      alert(`端口转发失败: ${err.message}`)
+    }
   }
 
-  const handleDelete = (id: string) => {
-    setForwards(forwards.filter(f => f.id !== id))
+  const handleDelete = async (id: string) => {
+    try {
+      window.api.portForward.stop(id)
+      const updated = forwards.filter(f => f.id !== id)
+      await saveForwards(updated)
+    } catch (err: any) {
+      console.error('Failed to stop port forward:', err)
+    }
   }
+
+  const connectedConnections = connections.filter(
+    c => connectionStatuses[c.id] === 'connected'
+  )
 
   const typeLabels = {
     local: '本地转发',
@@ -94,6 +150,21 @@ export function PortForwarding() {
           <div className="bg-sidebar-bg border border-sidebar-hover rounded-xl w-[480px] p-6">
             <h3 className="text-lg font-semibold text-sidebar-text mb-4">添加端口转发</h3>
             <div className="space-y-4">
+              <div>
+                <label className="block text-sm text-sidebar-muted mb-1">连接</label>
+                <select
+                  value={form.connectionId}
+                  onChange={(e) => setForm({ ...form, connectionId: e.target.value })}
+                  className="w-full bg-sidebar-hover text-sidebar-text rounded-lg px-4 py-2 focus:outline-none focus:ring-1 focus:ring-accent-blue"
+                >
+                  <option value="">选择 SSH 连接</option>
+                  {connectedConnections.map((conn) => (
+                    <option key={conn.id} value={conn.id}>
+                      {conn.name} ({conn.host})
+                    </option>
+                  ))}
+                </select>
+              </div>
               <div>
                 <label className="block text-sm text-sidebar-muted mb-1">名称</label>
                 <input

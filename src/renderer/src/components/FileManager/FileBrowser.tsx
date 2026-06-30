@@ -8,7 +8,7 @@ interface FileBrowserProps {
 
 export function FileBrowser({ connectionId }: FileBrowserProps) {
   const [files, setFiles] = useState<FileItem[]>([])
-  const [currentPath, setCurrentPath] = useState('/root')
+  const [currentPath, setCurrentPath] = useState('~')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set())
@@ -20,13 +20,13 @@ export function FileBrowser({ connectionId }: FileBrowserProps) {
     setLoading(true)
     setError(null)
     try {
-      const list = await window.api.sftp.list(connectionId, path)
-      setFiles(list.sort((a: FileItem, b: FileItem) => {
+      const result = await window.api.sftp.list(connectionId, path)
+      setFiles(result.items.sort((a: FileItem, b: FileItem) => {
         if (a.type === 'directory' && b.type !== 'directory') return -1
         if (a.type !== 'directory' && b.type === 'directory') return 1
         return a.name.localeCompare(b.name)
       }))
-      setCurrentPath(path)
+      setCurrentPath(result.resolvedPath)
     } catch (err: any) {
       setError(err.message)
     } finally {
@@ -35,7 +35,7 @@ export function FileBrowser({ connectionId }: FileBrowserProps) {
   }, [connectionId, connectionStatuses])
 
   useEffect(() => {
-    loadFiles('/root')
+    loadFiles('~')
   }, [connectionId, connectionStatuses[connectionId]])
 
   const handleNavigate = (path: string) => {
@@ -212,7 +212,7 @@ export function FileBrowser({ connectionId }: FileBrowserProps) {
             {files.map((file) => (
               <div
                 key={file.path}
-                className={`flex items-center gap-2 px-3 py-1.5 cursor-pointer ${
+                className={`group flex items-center gap-2 px-3 py-1.5 cursor-pointer ${
                   selectedFiles.has(file.path)
                     ? 'bg-accent-blue/20'
                     : 'hover:bg-sidebar-hover'

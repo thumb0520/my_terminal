@@ -91,6 +91,27 @@ const api = {
       ipcRenderer.on('menu:new-local-terminal', handler)
       return () => ipcRenderer.removeListener('menu:new-local-terminal', handler)
     }
+  },
+  portForward: {
+    start: (rule: any) => ipcRenderer.invoke(IPC_CHANNELS.PORT_FORWARD_START, rule),
+    stop: (id: string) => ipcRenderer.send(IPC_CHANNELS.PORT_FORWARD_STOP, id),
+    stopAll: () => ipcRenderer.send(IPC_CHANNELS.PORT_FORWARD_STOP_ALL),
+    list: () => ipcRenderer.invoke(IPC_CHANNELS.PORT_FORWARD_LIST),
+    onStarted: (cb: (id: string) => void) => {
+      const handler = (_: any, id: string) => cb(id)
+      ipcRenderer.on('portForward:started', handler)
+      return () => ipcRenderer.removeListener('portForward:started', handler)
+    },
+    onStopped: (cb: (id: string) => void) => {
+      const handler = (_: any, id: string) => cb(id)
+      ipcRenderer.on('portForward:stopped', handler)
+      return () => ipcRenderer.removeListener('portForward:stopped', handler)
+    },
+    onError: (cb: (id: string, error: string) => void) => {
+      const handler = (_: any, id: string, error: string) => cb(id, error)
+      ipcRenderer.on('portForward:error', handler)
+      return () => ipcRenderer.removeListener('portForward:error', handler)
+    }
   }
 }
 
